@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: 1. golangci-lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: 拉取代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod   # 版本以 go.mod 为准，不用两处维护
+          cache: true
+
+      - name: 执行 golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          args: --timeout=5m
+
+  test:
+    name: 2. go test
+    runs-on: ubuntu-latest
+    needs: lint                     # ← lint 通过才跑测试
+    steps:
+      - name: 拉取代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: 单元测试（竞态 + 覆盖率）
+        run: go test -race -covermode=atomic -coverprofile=coverage.out ./...
+
+      - name: 覆盖率概览
+        run: go tool cover -func=coverage.out | tail -n 1
+
+      - name: 上传覆盖率产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage.out
+
+  docker:
+    name: 3. Docker 构建
+    runs-on: ubuntu-latest
+    needs: test                     # ← 测试通过才构建镜像
+    steps:
+      - name: 拉取代码
+        uses: actions/checkout@v4
+
+      - name: 构建镜像
+        run: |
+          docker build \
+            -t denom:${{ github.sha }} \
+            -t denom:latest \
+            .
+
+      - name: 镜像冒烟测试
+        run: docker run --rm denom:${{ github.sha }} -amount 386
+
+      - name: 镜像体积
+        run: docker image inspect denom:${{ github.sha }} --format 'image size = {{.Size}} bytes'

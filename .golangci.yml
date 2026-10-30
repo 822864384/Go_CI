@@ -1,0 +1,25 @@
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true          # 测试文件也纳入检查
+
+linters:
+  # standard = errcheck + govet + ineffassign + staticcheck + unused
+  default: standard
+  enable:
+    - misspell         # 英文注释拼写检查
+    - unconvert        # 多余的类型转换
+  settings:
+    errcheck:
+      check-type-assertions: true
+    staticcheck:
+      checks:
+        - all
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  exclusions:
+    generated: lax
